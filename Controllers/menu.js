@@ -9,7 +9,7 @@ exec('which python3', (err, stdout) => {
 exec('which python', (err, stdout) => {
   console.log('python path:', stdout);
 });
-const pythonPath = '/root/.nix-profile/bin/python3';
+const pythonPath = '/usr/bin/python3';
 
 exports.read = async (req, res) => {
   try {
@@ -357,52 +357,74 @@ function runPythonAprioriWithData(transactions, minSupport, minConfidence, minLi
   return new Promise((resolve, reject) => {
     const pythonScriptPath = path.join(__dirname, './run_apriori.py');
     console.log('Python script path:', pythonScriptPath);
+    console.log('Using Python path:', pythonPath);
 
-    // เรียกใช้ python
-    const pythonProcess = spawn(pythonPath, [pythonScriptPath], {
-      stdio: ['pipe', 'pipe', 'pipe'],
-      env: { ...process.env, PYTHONIOENCODING: 'utf-8' }
+    // Test if Python and required modules are available
+    const testPython = spawn(pythonPath, ['-c', 'import pandas; import mlxtend; print("Modules available")'], {
+      stdio: ['pipe', 'pipe', 'pipe']
     });
 
-    // ส่งข้อมูลไป script
-    pythonProcess.stdin.write(JSON.stringify({
-      transactions: transactions.map(t => t.items),
-      minSupport,
-      minConfidence,
-      minLift
-    }));
-    pythonProcess.stdin.end();
-
-    let resultData = '';
-    let errorData = '';
-
-    // เก็บข้อมูลจาก script
-    pythonProcess.stdout.on('data', (data) => {
-      resultData += data.toString();
-    });
-
-    pythonProcess.stderr.on('data', (data) => {
-      errorData += data.toString();
-    });
-
-    // ตรวจสอบ script
-    pythonProcess.on('close', (code) => {
-      if (code !== 0) {
-        console.error(`Python script exited with code ${code}`);
-        console.error(`Error: ${errorData}`);
-        reject(new Error(`Python script error: ${errorData}`));
-      } else {
-        try {
-          const results = JSON.parse(resultData);
-          if (results.error) {
-            reject(new Error(results.error));
-          } else {
-            resolve(results);
-          }
-        } catch (err) {
-          reject(new Error(`Failed to parse Python output: ${err.message}`));
-        }
+    testPython.on('close', (testCode) => {
+      if (testCode !== 0) {
+        console.error('Python modules test failed');
+        reject(new Error('Required Python modules not available'));
+        return;
       }
+
+      // If test passes, run the actual script
+      const pythonProcess = spawn(pythonPath, [pythonScriptPath], {
+        stdio: ['pipe', 'pipe', 'pipe'],
+        env: { ...process.env, PYTHONIOENCODING: 'utf-8' }
+      });
+
+      // Send data to script
+      const inputData = JSON.stringify({
+        transactions: transactions.map(t => t.items),
+        minSupport,
+        minConfidence,
+        minLift
+      });
+
+      pythonProcess.stdin.write(inputData);
+      pythonProcess.stdin.end();
+
+      let resultData = '';
+      let errorData = '';
+
+      // Collect data from script
+      pythonProcess.stdout.on('data', (data) => {
+        resultData += data.toString();
+      });
+
+      pythonProcess.stderr.on('data', (data) => {
+        errorData += data.toString();
+      });
+
+      // Handle script completion
+      pythonProcess.on('close', (code) => {
+        if (code !== 0) {
+          console.error(`Python script exited with code ${code}`);
+          console.error(`Error: ${errorData}`);
+          reject(new Error(`Python script error: ${errorData}`));
+        } else {
+          try {
+            const results = JSON.parse(resultData);
+            if (results.error) {
+              reject(new Error(results.error));
+            } else {
+              resolve(results);
+            }
+          } catch (err) {
+            console.error('Raw Python output:', resultData);
+            reject(new Error(`Failed to parse Python output: ${err.message}`));
+          }
+        }
+      });
+
+      pythonProcess.on('error', (err) => {
+        console.error('Failed to start Python process:', err);
+        reject(new Error(`Failed to start Python process: ${err.message}`));
+      });
     });
   });
 }

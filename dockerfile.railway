@@ -3,19 +3,26 @@ FROM node:18
 
 # Install Python 3 and pip
 RUN apt-get update && \
-    apt-get install -y python3 python3-pip && \
-    apt-get clean
+    apt-get install -y python3 python3-pip python3-venv && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/*
+
+# Create symbolic links for easier access
+RUN ln -s /usr/bin/python3 /usr/bin/python
 
 # Set working directory
 WORKDIR /app
 
-# Copy and install Node.js dependencies
+# Copy and install Node.js dependencies first (for better caching)
 COPY package*.json ./
 RUN npm install
 
 # Copy Python requirements and install them
 COPY requirements.txt ./
 RUN pip3 install --no-cache-dir -r requirements.txt
+
+# Verify Python packages installation
+RUN python3 -c "import pandas; import mlxtend; print('Python packages installed successfully')"
 
 # Copy the rest of your app
 COPY . .
