@@ -38,6 +38,22 @@ const { resolve4 } = require('dns/promises');
 const storage = multer.memoryStorage(); // เก็บไฟล์ในหน่วยความจำชั่วคราว
 const upload = multer({ storage: storage });
 
+// Add this to your app.js startup
+const { exec } = require('child_process');
+
+console.log('=== CONTAINER DEBUG ===');
+exec('python3 --version', (err, stdout) => {
+  console.log('Python version:', stdout || 'Not found');
+});
+
+exec('pip3 list', (err, stdout) => {
+  console.log('Installed packages:', stdout || 'pip3 not found');
+});
+
+exec('find /usr -name "*pandas*" 2>/dev/null', (err, stdout) => {
+  console.log('Pandas locations:', stdout || 'Not found');
+});
+
 
 app.post('/register', jsonParser, (req, res) => {
   const { R_username, email, Password, R_Tel, R_Name } = req.body;
