@@ -3,36 +3,31 @@ const connection = require("../Controllers/association");
 const { spawn } = require('child_process');
 const path = require('path');
 const { exec } = require('child_process');
-const { installPythonDependencies } = require('./install-python-deps');
 
-// Dynamically detect Python path
-let pythonPath = '/root/.nix-profile/bin/python3'; // default fallback
-let dependenciesInstalled = false;
+// Simple Python path detection - no installation logic
+let pythonPath = 'python3'; // Use system default
 
-// Check for available Python installations and set the correct path
-exec('which python3', (err, stdout) => {
-  if (!err && stdout.trim()) {
-    pythonPath = stdout.trim();
-    console.log('Found python3 at:', pythonPath);
-  } else {
-    console.log('python3 not found via which command');
+// Verify Python dependencies are available on startup
+function verifyPythonDependencies() {
+  return new Promise((resolve) => {
+    exec('python3 -c "import pandas, mlxtend; print(\'Dependencies OK\')"', (err, stdout) => {
+      if (err) {
+        console.error('❌ Python dependencies not available:', err.message);
+        console.error('Make sure pandas and mlxtend are installed in the container');
+        resolve(false);
+      } else {
+        console.log('✅ Python dependencies verified:', stdout.trim());
+        resolve(true);
+      }
+    });
+  });
+}
+
+// Check dependencies on startup
+verifyPythonDependencies().then(available => {
+  if (!available) {
+    console.error('WARNING: Python dependencies not available. Association analysis will fail.');
   }
-});
-
-exec('which python', (err, stdout) => {
-  console.log('python path:', stdout.trim());
-});
-
-// Install Python dependencies on startup
-installPythonDependencies().then(success => {
-  dependenciesInstalled = success;
-  if (success) {
-    console.log('Python dependencies are ready');
-  } else {
-    console.error('Failed to install Python dependencies');
-  }
-}).catch(error => {
-  console.error('Error during Python dependency installation:', error);
 });
 
 exports.read = async (req, res) => {
@@ -162,8 +157,8 @@ exports.addItemsToOrder = (req, res) => {
     item.additionalInfo || null,
     orderId,
     item.type === 'menu' ? item.menuId : null,
-    null, // Promotion_Menu_Item_id
-    '3',  // status_id
+    null,
+    '3',
     item.type === 'noodle' && item.noodleDetails ? item.noodleDetails.Soup_id : null,
     item.type === 'noodle' && item.noodleDetails ? item.noodleDetails.Size_id : null,
     item.type === 'noodle' && item.noodleDetails ? item.noodleDetails.Meat_id : null,
@@ -180,7 +175,6 @@ exports.addItemsToOrder = (req, res) => {
     return res.status(200).json({ message: 'Items added successfully', inserted: result.affectedRows });
   });
 };
-
 
 exports.orderID = async (req, res) => {
   try {
@@ -234,7 +228,6 @@ WHERE od.Order_id = ?
   }
 };
 
-
 exports.callstaff = (req, res) => {
   const orderId = req.params.orderId;
   const orderQuery = 'UPDATE `order` SET status_id = ? WHERE Order_id = ?';
@@ -285,7 +278,16 @@ exports.callstaff = (req, res) => {
 
 exports.getAssociation = async (req, res) => {
   try {
-    // รับพารามิตเตอร์จาก api
+    // Quick dependency check
+    const dependenciesAvailable = await verifyPythonDependencies();
+    if (!dependenciesAvailable) {
+      return res.status(500).json({
+        success: false,
+        error: 'Python dependencies not available',
+        message: 'Please ensure pandas and mlxtend are installed in the container'
+      });
+    }
+
     const minSupport = parseFloat(req.query.min_support || 0.2);
     const minConfidence = parseFloat(req.query.min_confidence || 0.5);
     const minLift = parseFloat(req.query.min_lift || 1.0);
@@ -302,7 +304,6 @@ exports.getAssociation = async (req, res) => {
       LEFT JOIN menu ON order_detail.menu_id = menu.menu_id
     `;
 
-    // ฟิลเตอร์วันที่
     const queryParams = [];
     if (startDate || endDate) {
       const conditions = [];
@@ -352,14 +353,13 @@ exports.getAssociation = async (req, res) => {
 
     const transactionList = Array.from(groupedOrders.values());
 
-    // รอรับผลจาก apriori         //รันฟังชัน
     const aprioriResults = await runPythonAprioriWithData(
       transactionList,
       minSupport,
       minConfidence,
       minLift
     );
-    //ส่งค่ากลับ api
+
     return res.status(200).json({
       success: true,
       transactions: transactionList,
@@ -376,126 +376,63 @@ exports.getAssociation = async (req, res) => {
     });
   }
 };
-// ฟังชัน apriori รับออเดอร์และค่าต่างๆมา
+
+// Simplified Python execution - no installation attempts
 function runPythonAprioriWithData(transactions, minSupport, minConfidence, minLift) {
-  return new Promise(async (resolve, reject) => {
+  return new Promise((resolve, reject) => {
     const pythonScriptPath = path.join(__dirname, './run_apriori.py');
     console.log('Python script path:', pythonScriptPath);
-    
-    // Ensure dependencies are installed before proceeding
-    if (!dependenciesInstalled) {
-      console.log('Dependencies not ready, attempting installation...');
-      try {
-        const installed = await installPythonDependencies();
-        if (!installed) {
-          reject(new Error('Failed to install Python dependencies'));
-          return;
-        }
-        dependenciesInstalled = true;
-      } catch (error) {
-        reject(new Error(`Dependency installation error: ${error.message}`));
-        return;
-      }
-    }
-    
-    // Detect Python path at runtime
-    exec('which python3', (err, stdout) => {
-      let detectedPythonPath = pythonPath; // use the global fallback
-      
-      if (!err && stdout.trim()) {
-        detectedPythonPath = stdout.trim();
-      }
-      
-      console.log('Using Python path:', detectedPythonPath);
 
-      // Test if Python and required modules are available
-      const testPython = spawn(detectedPythonPath, ['-c', 'import pandas; import mlxtend; print("Modules available")'], {
-        stdio: ['pipe', 'pipe', 'pipe']
-      });
+    const pythonProcess = spawn(pythonPath, [pythonScriptPath], {
+      stdio: ['pipe', 'pipe', 'pipe'],
+      env: { ...process.env, PYTHONIOENCODING: 'utf-8' }
+    });
 
-      let testError = '';
-      testPython.stderr.on('data', (data) => {
-        testError += data.toString();
-      });
+    // Send data to script
+    const inputData = JSON.stringify({
+      transactions: transactions.map(t => t.items),
+      minSupport,
+      minConfidence,
+      minLift
+    });
 
-      testPython.on('close', (testCode) => {
-        if (testCode !== 0) {
-          console.error('Python modules test failed:', testError);
-          reject(new Error(`Required Python modules not available: ${testError}`));
-          return;
-        }
+    pythonProcess.stdin.write(inputData);
+    pythonProcess.stdin.end();
 
-        console.log('Python modules test passed');
+    let resultData = '';
+    let errorData = '';
 
-        // If test passes, run the actual script
-        const pythonProcess = spawn(detectedPythonPath, [pythonScriptPath], {
-          stdio: ['pipe', 'pipe', 'pipe'],
-          env: { ...process.env, PYTHONIOENCODING: 'utf-8' }
-        });
+    pythonProcess.stdout.on('data', (data) => {
+      resultData += data.toString();
+    });
 
-        // Send data to script
-        const inputData = JSON.stringify({
-          transactions: transactions.map(t => t.items),
-          minSupport,
-          minConfidence,
-          minLift
-        });
+    pythonProcess.stderr.on('data', (data) => {
+      errorData += data.toString();
+    });
 
-        pythonProcess.stdin.write(inputData);
-        pythonProcess.stdin.end();
-
-        let resultData = '';
-        let errorData = '';
-
-        // Collect data from script
-        pythonProcess.stdout.on('data', (data) => {
-          resultData += data.toString();
-        });
-
-        pythonProcess.stderr.on('data', (data) => {
-          errorData += data.toString();
-        });
-
-        // Handle script completion
-        pythonProcess.on('close', (code) => {
-          if (code !== 0) {
-            console.error(`Python script exited with code ${code}`);
-            console.error(`Error: ${errorData}`);
-            reject(new Error(`Python script error: ${errorData}`));
+    pythonProcess.on('close', (code) => {
+      if (code !== 0) {
+        console.error(`Python script exited with code ${code}`);
+        console.error(`Error: ${errorData}`);
+        reject(new Error(`Python script error: ${errorData}`));
+      } else {
+        try {
+          const results = JSON.parse(resultData);
+          if (results.error) {
+            reject(new Error(results.error));
           } else {
-            try {
-              const results = JSON.parse(resultData);
-              if (results.error) {
-                reject(new Error(results.error));
-              } else {
-                resolve(results);
-              }
-            } catch (err) {
-              console.error('Raw Python output:', resultData);
-              reject(new Error(`Failed to parse Python output: ${err.message}`));
-            }
+            resolve(results);
           }
-        });
+        } catch (err) {
+          console.error('Raw Python output:', resultData);
+          reject(new Error(`Failed to parse Python output: ${err.message}`));
+        }
+      }
+    });
 
-        pythonProcess.on('error', (err) => {
-          console.error('Failed to start Python process:', err);
-          reject(new Error(`Failed to start Python process: ${err.message}`));
-        });
-      });
-
-      testPython.on('error', (err) => {
-        console.error('Failed to test Python:', err);
-        reject(new Error(`Failed to test Python: ${err.message}`));
-      });
+    pythonProcess.on('error', (err) => {
+      console.error('Failed to start Python process:', err);
+      reject(new Error(`Failed to start Python process: ${err.message}`));
     });
   });
 }
-
-
-
-
-
-
-
-
-
