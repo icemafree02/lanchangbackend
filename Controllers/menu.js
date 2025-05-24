@@ -348,9 +348,10 @@ exports.getAssociation = async (req, res) => {
 function runPythonAprioriWithData(transactions, minSupport, minConfidence, minLift) {
   return new Promise((resolve, reject) => {
     const pythonScriptPath = path.join(__dirname, './run_apriori.py');
+    console.log('Python script path:', pythonScriptPath);
 
     // เรียกใช้ python
-    const pythonProcess = spawn('python', [pythonScriptPath], {
+    const pythonProcess = spawn('python3', [pythonScriptPath], {
       stdio: ['pipe', 'pipe', 'pipe'],
       env: { ...process.env, PYTHONIOENCODING: 'utf-8' }
     });
