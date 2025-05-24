@@ -4,36 +4,36 @@ FROM node:18
 # Set working directory
 WORKDIR /app
 
-# Install Python pip and required system dependencies
+# Install system dependencies and Python packages in one layer
 RUN apt-get update && apt-get install -y \
     python3-pip \
     python3-dev \
     build-essential \
-    && rm -rf /var/lib/apt/lists/*
+    && pip3 install pandas mlxtend \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/* \
+    && rm -rf /root/.cache/pip
 
-# Install Python dependencies globally
-RUN pip3 install pandas mlxtend
-
-# Copy and install Node.js dependencies
+# Copy package files and install Node.js dependencies
 COPY package*.json ./
-RUN npm install
+RUN npm ci --only=production
 
-# Copy the rest of your app
+# Copy application code
 COPY . .
 
-# Show Python information for debugging
-RUN echo "=== Python Environment Debug ===" && \
-    which python3 && \
-    python3 --version && \
-    which pip3 && \
-    pip3 --version && \
-    python3 -c "import sys; print('Python executable:', sys.executable)" && \
-    python3 -c "import sys; print('Python path:', sys.path[:3])" && \
-    python3 -c "import pandas, mlxtend; print('Python dependencies installed successfully')" && \
-    echo "=== End Debug ==="
+# Verify Python setup (optional - remove in production)
+RUN python3 -c "import pandas, mlxtend; print('✓ Python dependencies ready')"
 
-# Expose your app's port
+# Create non-root user for security
+RUN useradd -m -u 1001 appuser && chown -R appuser:appuser /app
+USER appuser
+
+# Expose port
 EXPOSE 8080
 
-# Start the Node.js app
+# Health check
+HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
+  CMD curl -f http://localhost:8080/health || exit 1
+
+# Start application
 CMD ["node", "app.js"]
