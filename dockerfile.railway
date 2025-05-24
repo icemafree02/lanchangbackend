@@ -4,19 +4,32 @@ FROM node:18
 # Set working directory
 WORKDIR /app
 
+# Install Python pip and required system dependencies
+RUN apt-get update && apt-get install -y \
+    python3-pip \
+    python3-dev \
+    build-essential \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Python dependencies globally
+RUN pip3 install pandas mlxtend
+
 # Copy and install Node.js dependencies
 COPY package*.json ./
 RUN npm install
 
-# Copy the rest of your app (including the Python installation script)
+# Copy the rest of your app
 COPY . .
 
 # Show Python information for debugging
 RUN echo "=== Python Environment Debug ===" && \
     which python3 && \
     python3 --version && \
+    which pip3 && \
+    pip3 --version && \
     python3 -c "import sys; print('Python executable:', sys.executable)" && \
     python3 -c "import sys; print('Python path:', sys.path[:3])" && \
+    python3 -c "import pandas, mlxtend; print('Python dependencies installed successfully')" && \
     echo "=== End Debug ==="
 
 # Expose your app's port

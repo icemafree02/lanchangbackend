@@ -6,7 +6,7 @@ const { exec } = require('child_process');
 const { installPythonDependencies } = require('./install-python-deps');
 
 // Dynamically detect Python path
-let pythonPath = '/usr/bin/python3'; // default fallback
+let pythonPath = '/root/.nix-profile/bin/python3'; // default fallback
 let dependenciesInstalled = false;
 
 // Check for available Python installations and set the correct path
