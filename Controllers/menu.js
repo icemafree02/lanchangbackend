@@ -2,6 +2,14 @@ const db = require("../Controllers/db");
 const connection = require("../Controllers/association");
 const { spawn } = require('child_process');
 const path = require('path');
+const { exec } = require('child_process');
+exec('which python3', (err, stdout) => {
+  console.log('python3 path:', stdout);
+});
+exec('which python', (err, stdout) => {
+  console.log('python path:', stdout);
+});
+
 
 exports.read = async (req, res) => {
   try {
@@ -351,7 +359,7 @@ function runPythonAprioriWithData(transactions, minSupport, minConfidence, minLi
     console.log('Python script path:', pythonScriptPath);
 
     // เรียกใช้ python
-    const pythonProcess = spawn('python3', [pythonScriptPath], {
+    const pythonProcess = spawn('python', [pythonScriptPath], {
       stdio: ['pipe', 'pipe', 'pipe'],
       env: { ...process.env, PYTHONIOENCODING: 'utf-8' }
     });
