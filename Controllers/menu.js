@@ -9,7 +9,7 @@ exec('which python3', (err, stdout) => {
 exec('which python', (err, stdout) => {
   console.log('python path:', stdout);
 });
-
+const pythonPath = '/root/.nix-profile/bin/python3';
 
 exports.read = async (req, res) => {
   try {
@@ -359,7 +359,7 @@ function runPythonAprioriWithData(transactions, minSupport, minConfidence, minLi
     console.log('Python script path:', pythonScriptPath);
 
     // เรียกใช้ python
-    const pythonProcess = spawn('python', [pythonScriptPath], {
+    const pythonProcess = spawn(pythonPath, [pythonScriptPath], {
       stdio: ['pipe', 'pipe', 'pipe'],
       env: { ...process.env, PYTHONIOENCODING: 'utf-8' }
     });
