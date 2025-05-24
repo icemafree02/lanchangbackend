@@ -1,0 +1,19 @@
+# Base image with Node.js and Python
+FROM node:20-bullseye
+
+# Install Python dependencies
+RUN apt-get update && \
+    apt-get install -y python3 python3-pip && \
+    pip3 install pandas mlxtend
+
+# Set working directory
+WORKDIR /app
+
+# Copy files
+COPY package*.json ./
+RUN npm install
+
+COPY . .
+
+# Run the server
+CMD ["node", "index.js"]

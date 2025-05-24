@@ -350,7 +350,7 @@ function runPythonAprioriWithData(transactions, minSupport, minConfidence, minLi
     const pythonScriptPath = path.join(__dirname, './run_apriori.py');
 
     // เรียกใช้ python
-    const pythonProcess = spawn('python', [pythonScriptPath], {
+    const pythonProcess = spawn('python3', [pythonScriptPath], {
       stdio: ['pipe', 'pipe', 'pipe'],
       env: { ...process.env, PYTHONIOENCODING: 'utf-8' }
     });
