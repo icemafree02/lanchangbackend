@@ -3,13 +3,37 @@ const connection = require("../Controllers/association");
 const { spawn } = require('child_process');
 const path = require('path');
 const { exec } = require('child_process');
+const { installPythonDependencies } = require('./install-python-deps');
+
+// Dynamically detect Python path
+let pythonPath = '/usr/bin/python3'; // default fallback
+let dependenciesInstalled = false;
+
+// Check for available Python installations and set the correct path
 exec('which python3', (err, stdout) => {
-  console.log('python3 path:', stdout);
+  if (!err && stdout.trim()) {
+    pythonPath = stdout.trim();
+    console.log('Found python3 at:', pythonPath);
+  } else {
+    console.log('python3 not found via which command');
+  }
 });
+
 exec('which python', (err, stdout) => {
-  console.log('python path:', stdout);
+  console.log('python path:', stdout.trim());
 });
-let pythonPath = '/usr/bin/python3';
+
+// Install Python dependencies on startup
+installPythonDependencies().then(success => {
+  dependenciesInstalled = success;
+  if (success) {
+    console.log('Python dependencies are ready');
+  } else {
+    console.error('Failed to install Python dependencies');
+  }
+}).catch(error => {
+  console.error('Error during Python dependency installation:', error);
+});
 
 exports.read = async (req, res) => {
   try {
@@ -354,9 +378,25 @@ exports.getAssociation = async (req, res) => {
 };
 // ฟังชัน apriori รับออเดอร์และค่าต่างๆมา
 function runPythonAprioriWithData(transactions, minSupport, minConfidence, minLift) {
-  return new Promise((resolve, reject) => {
+  return new Promise(async (resolve, reject) => {
     const pythonScriptPath = path.join(__dirname, './run_apriori.py');
     console.log('Python script path:', pythonScriptPath);
+    
+    // Ensure dependencies are installed before proceeding
+    if (!dependenciesInstalled) {
+      console.log('Dependencies not ready, attempting installation...');
+      try {
+        const installed = await installPythonDependencies();
+        if (!installed) {
+          reject(new Error('Failed to install Python dependencies'));
+          return;
+        }
+        dependenciesInstalled = true;
+      } catch (error) {
+        reject(new Error(`Dependency installation error: ${error.message}`));
+        return;
+      }
+    }
     
     // Detect Python path at runtime
     exec('which python3', (err, stdout) => {
